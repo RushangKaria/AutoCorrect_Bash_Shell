@@ -1,0 +1,229 @@
+# System-wide .bashrc file for interactive bash(1) shells.
+
+# To enable the settings / commands in this file for login shells as well,
+# this file has to be sourced in /etc/profile.
+
+# If not running interactively, don't do anything
+[ -z "$PS1" ] && return
+
+# check the window size after each command and, if necessary,
+# update the values of LINES and COLUMNS.
+shopt -s checkwinsize
+
+# set variable identifying the chroot you work in (used in the prompt below)
+if [ -z "$debian_chroot" ] && [ -r /etc/debian_chroot ]; then
+    debian_chroot=$(cat /etc/debian_chroot)
+fi
+
+# set a fancy prompt (non-color, overwrite the one in /etc/profile)
+PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
+
+# Commented out, don't overwrite xterm -T "title" -n "icontitle" by default.
+# If this is an xterm set the title to user@host:dir
+#case "$TERM" in
+#xterm*|rxvt*)
+#    PROMPT_COMMAND='echo -ne "\033]0;${USER}@${HOSTNAME}: ${PWD}\007"'
+#    ;;
+#*)
+#    ;;
+#esac
+
+# enable bash completion in interactive shells
+#if [ -f /etc/bash_completion ] && ! shopt -oq posix; then
+#    . /etc/bash_completion
+#fi
+
+
+
+# sudo hint
+if [ ! -e "$HOME/.sudo_as_admin_successful" ]; then
+    case " $(groups) " in *\ admin\ *)
+    if [ -x /usr/bin/sudo ]; then
+	cat <<-EOF
+	To run a command as administrator (user "root"), use "sudo <command>".
+	See "man sudo_root" for details.
+	
+	EOF
+    fi
+    esac
+fi
+
+# if the command-not-found package is installed, use it
+if [ -x /usr/lib/command-not-found -o -x /usr/share/command-not-found ]; then
+	function command_not_found_handle {
+
+FIRST=$1
+COMMAND=$@
+
+		corrector
+
+	        # check because c-n-f could've been removed in the meantime
+                if [ -x /usr/lib/command-not-found ]; then
+		   /usr/bin/python /usr/lib/command-not-found -- $1
+                   return $?
+                elif [ -x /usr/share/command-not-found ]; then
+		   /usr/bin/python /usr/share/command-not-found -- $1
+                   return $?
+		else
+		   return 127
+		fi
+	}
+fi
+
+function corrector
+{
+#echo $FIRST
+#echo $COMMAND
+
+
+WORD=""
+Input=$FIRST
+#echo $Input
+LENGTH=$(expr length $Input)
+#echo $LENGTH
+CommandChar=""
+INDEX=1
+InputChar=""
+COMMAND_LENGTH=1
+SUB=0
+FLAG=-1
+WEIGHT=0
+VALUE=0
+MIN_WEIGHT=3	# ANOTHER APPROACH IS TO SET IT TO 0...AND ONLY COUNT NO OF DIFFERENCES IN CHARACTERS
+APT_COMMAND=""
+
+_get_values()
+{
+case $WORD in
+"a") VALUE=1
+	;;
+"b") VALUE=2
+	;;
+"c") VALUE=3
+	;;
+"d") VALUE=4
+	;;
+"e") VALUE=5
+	;;
+"f") VALUE=6
+	;;
+"g") VALUE=7
+	;;
+"h") VALUE=8
+	;;
+"i") VALUE=9
+	;;
+"j") VALUE=10
+	;;
+"k") VALUE=11
+	;;
+"l") VALUE=12
+	;;
+"m") VALUE=13
+	;;
+"n") VALUE=14
+	;;
+"o") VALUE=15
+	;;
+"p") VALUE=16
+	;;
+"q") VALUE=17
+	;;
+"r") VALUE=18
+	;;
+"s") VALUE=19
+	;;
+"t") VALUE=20
+	;;
+"u") VALUE=21
+	;;
+"v") VALUE=22
+	;;
+"w") VALUE=23
+	;;
+"x") VALUE=24
+	;;
+"y") VALUE=25
+	;;
+"z") VALUE=26
+	;;
+*) VALUE=0	# This implies INDEX has been crossed therefore return 0....therefore the subtraction will be of the form x-0 || 0-x
+	;;	# This will be added to the ERROR..thus increasing the weight if less characters are provided
+esac
+}
+
+
+for i in $(exec ls /bin)
+do
+COMMAND_LENGTH=$(expr length $i)
+WEIGHT=0
+INDEX=1
+#echo $i
+
+
+	while [ "$INDEX" -le "$LENGTH" ] || [ "$INDEX" -le "$COMMAND_LENGTH" ] # it is OR instead of AND since the rest of the errors will also be 
+	do								       # considered..thus increasing the weight..if INDEX crossed awk returns 0
+	WORD=$(echo $i | awk '{print substr ($0, '$INDEX', 1)}')	# single quotes between $INDEX are required since awk itself wont
+	#echo "WORD= " $WORD						# recognize external variables...so we allow BASH to do that job during
+	_get_values							# preprocessing..if not present awk presets it to 0...
+	#echo "VALUE=" $VALUE						# TRY REMOVING THE QUOTES AND OBSERVE THE OUPUT..eg. clear..only 'c'
+	CommandChar=$VALUE						# will be the output..ie only the first character will be extracted
+	#echo "CommandChar= "$CommandChar
+
+	WORD=$(echo $Input | awk '{print substr ($0, '$INDEX', 1)}')
+	#echo "InputChar= "$WORD
+	_get_values
+	InputChar=$VALUE
+	#echo "InputChar= " $InputChar
+
+	SUB=$(expr $CommandChar - $InputChar)
+	#echo "SUB= " $SUB
+
+		if [ "$SUB" -lt 0 ]; then
+		SUB=$(($SUB*$FLAG))
+		fi
+
+	#WEIGHT=$(expr $WEIGHT + $SUB)
+	#echo "WEIGHT= " $WEIGHT
+
+
+		if [ "$SUB" -gt 0 ]; then
+		WEIGHT=$(expr $WEIGHT + 1)
+		fi
+
+	INDEX=$(expr $INDEX + 1)
+	#echo "INDEX= "$INDEX
+
+	#echo "----------------------------------------------------------------"
+	done
+
+#echo "For "$i "WEIGHT= "$WEIGHT
+
+	if [ "$WEIGHT" -lt "$MIN_WEIGHT" ]; then	# -le can also be used..make sure to decrease MIN_WEIGHT BY 1 to obtain the same results
+	MIN_WEIGHT=$WEIGHT
+	APT_COMMAND=$i
+	fi
+done
+
+#echo "APT_COMMAND is "$APT_COMMAND
+
+if [ "$APT_COMMAND" == " " ]; then
+return 1
+#echo "COMMAND NOT FOUND"
+#exit 2>/dev/null
+else
+X=$APT_COMMAND
+	for i in $COMMAND
+	do
+		if [ "$i" == "$Input" ]; then
+		continue
+		fi
+	X=$X" "$i	
+	done
+exec $X
+exit 2>/dev/null
+
+fi
+
+
+}
